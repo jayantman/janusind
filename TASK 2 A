@@ -1,0 +1,10 @@
+void setup() {
+  Serial.begin(9600); // Match baud rate with JS
+}
+
+void loop() {
+  int sensorValue = analogRead(A0);  // Example: read from A0
+  float voltage = sensorValue * (5.0 / 1023.0);  
+  Serial.println(voltage);  // Send sensor data over serial
+  delay(200); // Send data every 200 ms
+}
