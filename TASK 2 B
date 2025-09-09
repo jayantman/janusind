@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arduino Live Sensor Plot</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 20px;
+    }
+    #connectBtn {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #chart {
+      width: 90%;
+      margin: auto;
+      height: 400px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Live Arduino Sensor Data</h2>
+  <button id="connectBtn">Connect to Arduino</button>
+  <div id="chart"></div>
+
+  <script>
+    let port;
+    let reader;
+    let keepReading = true;
+    const sensorData = [];
+    const timeStamps = [];
+
+    async function connectSerial() {
+      try {
+        // Request Arduino serial port
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+
+        // Setup text decoder
+        const decoder = new TextDecoderStream();
+        const inputDone = port.readable.pipeTo(decoder.writable);
+        const inputStream = decoder.readable;
+        reader = inputStream.getReader();
+
+        // Initialize Plotly graph
+        Plotly.newPlot('chart', [{
+          x: [],
+          y: [],
+          mode: 'lines',
+          line: { color: 'blue' }
+        }], {
+          title: 'Live Sensor Data',
+          xaxis: { title: 'Time (s)' },
+          yaxis: { title: 'Sensor Value' }
+        });
+
+        const startTime = Date.now();
+
+        while (keepReading) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) {
+            const sensorValue = parseFloat(value.trim());
+            if (!isNaN(sensorValue)) {
+              const elapsed = (Date.now() - startTime) / 1000;
+              timeStamps.push(elapsed);
+              sensorData.push(sensorValue);
+
+              // Update graph dynamically
+              Plotly.update('chart', {
+                x: [timeStamps],
+                y: [sensorData]
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Serial connection error:", err);
+      }
+    }
+
+    document.getElementById("connectBtn").addEventListener("click", connectSerial);
+  </script>
+</body>
+</html>
