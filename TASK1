@@ -1,0 +1,153 @@
+#include <TinyGPS++.h>   //arduino c++library ,uses UART
+#include <SoftwareSerial.h> //to create UART ports
+
+TinyGPSPlus gps;(creates gps object and hold all the parsed GPS data)
+
+SoftwareSerial gpsSerial(4, 3);  // RX = 4, TX = 3
+
+enum CanSatState {        //way to group named constants
+  IDLE,
+  ASCENT,
+  APOGEE,
+  DESCENT,
+  PAYLOAD_DEPLOYED,
+  LANDED
+};
+
+CanSatState currentState = IDLE;   //shows current state
+
+double peakAltitude = 0.0;       // to store highest altitude at each stage , intitally it is zero.
+double deployAltitude = 0.0;     // This will store the altitude where you want to deploy your payload.
+bool payloadDeployed = false;    //start with false and change to true when u deploy so that u dont have to change again.
+
+// Thresholds for detecting state changes
+const double LANDED_THRESHOLD = 2.0;  // minimum height below and equal to which we consider it to have landed
+const double ALTITUDE_CHANGE_MIN = 1.0; // ignore fluctuations
+
+
+void setup() {
+  Serial.begin(115200); //115200 is the baud rate which is bits per second      
+  gpsSerial.begin(9600);                     //Quectel L89HA uses 9600bps so we must match it  
+
+  Serial.println("Initializing Quectel L89HA GNSS Module...");
+  Serial.println("Waiting for GPS fix...");(gps fix means module has locked on to enough satellites to calculate)
+  Serial.println("---------------------------------------------");
+
+  delay(1000); // delay to ensure module is ready
+
+  // fundtion to enable only GRMC & GGGA sentences,it is essentially a message to the gps module/
+  gpsSerial.println("$PSTMSETPAR,1201,66*19");  //$-is used to start command,then we set parameter, 1201,2*1F essentially tells us the limitations.
+
+  delay(100); // short delay between commands
+
+  // Save settings permanently in module memory
+  gpsSerial.println("$PSTMSETPAR,1201,2*1F");        
+
+  Serial.println("Configured L89HA to output only GNRMC & GNGGA.");
+  Serial.println("---------------------------------------------");
+}
+
+
+
+void loop() {
+  // Continuously read data from GNSS module
+  while (gpsSerial.available() > 0) {               //checks how many bytes of data are yet to be read
+    gps.encode(gpsSerial.read());              //parses data
+
+
+    if (gps.location.isUpdated() && gps.altitude.isUpdated() && gps.time.isUpdated()) {
+      double currentAltitude = gps.altitude.meters();  //reads current altitude.
+
+      
+      // State Machine Logic is given below.
+      
+      switch (currentState) {
+        case IDLE:
+          if (currentAltitude > LANDED_THRESHOLD) {        //if altitude is greater than 2meters we assume ascent has started.
+            currentState = ASCENT;
+          }
+          break;
+
+        case ASCENT:
+          if (currentAltitude > peakAltitude + ALTITUDE_CHANGE_MIN) {
+            peakAltitude = currentAltitude;  // update peak altitude
+          } else if (currentAltitude < peakAltitude - ALTITUDE_CHANGE_MIN) {
+            // We’ve started descending which means transition to APOGEE first
+            currentState = APOGEE;
+            deployAltitude = 0.75 * peakAltitude; // Set deploy point because the maximumum peak altitude has been reached and descent has begun.
+          }
+          break;
+
+        case APOGEE:
+          currentState = DESCENT;
+          break;
+
+        case DESCENT:
+          if (!payloadDeployed && currentAltitude <= deployAltitude) { //condition to check deployment 
+            currentState = PAYLOAD_DEPLOYED;
+            payloadDeployed = true;
+          } else if (currentAltitude <= LANDED_THRESHOLD) {  //condition to check landing.
+            currentState = LANDED;
+          }
+          break;
+
+        case PAYLOAD_DEPLOYED:
+          if (currentAltitude <= LANDED_THRESHOLD) {
+            currentState = LANDED;
+          }
+          break;
+
+        case LANDED:
+          // Do nothing; final state
+          break;
+      }
+
+      
+      // Print Data
+      
+      Serial.println("------ GPS Data ------");
+
+      // Print Time (UTC)
+      if (gps.time.isValid()) {
+        Serial.print("Time (UTC): ");
+        Serial.print(gps.time.hour()); Serial.print(":");
+        Serial.print(gps.time.minute()); Serial.print(":");
+        Serial.println(gps.time.second());
+      } else {
+        Serial.println("Time: Not Available");
+      }
+
+      // Print Latitude & Longitude
+      if (gps.location.isValid()) {
+        Serial.print("Latitude  : "); Serial.println(gps.location.lat(), 6);
+        Serial.print("Longitude : "); Serial.println(gps.location.lng(), 6);
+      } else {
+        Serial.println("Location: Not Available");
+      }
+
+      // Print MSL Altitude in meters
+      if (gps.altitude.isValid()) {
+        Serial.print("MSL Altitude: ");
+        Serial.print(currentAltitude);
+        Serial.println(" m");
+      } else {
+        Serial.println("Altitude: Not Available");
+      }
+
+      // Print State
+      Serial.print("State: ");
+      switch (currentState) {
+        case IDLE: Serial.println("IDLE"); break;
+        case ASCENT: Serial.println("ASCENT"); break;
+        case APOGEE: Serial.println("APOGEE"); break;
+        case DESCENT: Serial.println("DESCENT"); break;
+        case PAYLOAD_DEPLOYED: Serial.println("PAYLOAD DEPLOYED"); break;
+        case LANDED: Serial.println("LANDED"); break;
+      }
+
+      Serial.println("-----------------------\n");
+    }
+  }
+}.
+            
+                
