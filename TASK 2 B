@@ -29,62 +29,62 @@
   <div id="chart"></div>
 
   <script>
-    let port;
-    let reader;
-    let keepReading = true;
-    const sensorData = [];
-    const timeStamps = [];
+    let port;    //to open connection between browser and arduino.
+    let reader;  //reads data that has been sent by arduino
+    let keepReading = true;  //helps us control when we should stop collecting data.
+    const sensorData = [];    //empty array to store data from arduino.
+    const timeStamps = [];    //will store timestamps for each sensor reading.
 
-    async function connectSerial() {
+    async function connectSerial() {    //async because it needs to do things that take time without freezing the rest of code.
       try {
         // Request Arduino serial port
-        port = await navigator.serial.requestPort();
-        await port.open({ baudRate: 9600 });
+        port = await navigator.serial.requestPort();  //This asks your browser to show a popup where you select the Arduino board’s USB port.
+        await port.open({ baudRate: 9600 });   //this opens serial connection to arduino.baud rate has to match with arduino code.
 
         // Setup text decoder
-        const decoder = new TextDecoderStream();
-        const inputDone = port.readable.pipeTo(decoder.writable);
-        const inputStream = decoder.readable;
-        reader = inputStream.getReader();
+        const decoder = new TextDecoderStream();   //this creates a decoder.
+        const inputDone = port.readable.pipeTo(decoder.writable);   //connects serial data from arduino to decoder and does decoding.
+        const inputStream = decoder.readable;  //creates a stream thats readable after decoding.
+        reader = inputStream.getReader();  //reader object to read line by line.
 
         // Initialize Plotly graph
-        Plotly.newPlot('chart', [{
-          x: [],
-          y: [],
+        Plotly.newPlot('chart', [{  //creates a blank chart in webpages chart div.
+          x: [],  //horizontal axis shows time.
+          y: [],  //shows sensor values.
           mode: 'lines',
-          line: { color: 'blue' }
+          line: { color: 'blue' }  //line design.
         }], {
           title: 'Live Sensor Data',
-          xaxis: { title: 'Time (s)' },
-          yaxis: { title: 'Sensor Value' }
+          xaxis: { title: 'Time (s)' }, 
+          yaxis: { title: 'Sensor Value' }   
         });
 
-        const startTime = Date.now();
+        const startTime = Date.now();  //records current time to plot along x axis.
 
         while (keepReading) {
-          const { value, done } = await reader.read();
+          const { value, done } = await reader.read();// value is incoming data and done is true of stream has ended.  
           if (done) break;
           if (value) {
-            const sensorValue = parseFloat(value.trim());
-            if (!isNaN(sensorValue)) {
+            const sensorValue = parseFloat(value.trim()); //trim to remove blank spaces and new lines !!!
+            if (!isNaN(sensorValue)) {   //ensures valid number.
               const elapsed = (Date.now() - startTime) / 1000;
-              timeStamps.push(elapsed);
-              sensorData.push(sensorValue);
+              timeStamps.push(elapsed); //pushes time into array.
+              sensorData.push(sensorValue); //pushes data to array.
 
               // Update graph dynamically
               Plotly.update('chart', {
-                x: [timeStamps],
+                x: [timeStamps],  //this is to update the plotly chart in real time.
                 y: [sensorData]
               });
             }
           }
         }
       } catch (err) {
-        console.error("Serial connection error:", err);
+        console.error("Serial connection error:", err); // this is to catch error and inform us of it.
       }
     }
 
-    document.getElementById("connectBtn").addEventListener("click", connectSerial);
+    document.getElementById("connectBtn").addEventListener("click", connectSerial);  //Runs the connect serial function above when the button-connectBtn is pressed.
   </script>
 </body>
 </html>
